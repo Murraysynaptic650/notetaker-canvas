@@ -1,0 +1,13 @@
+{
+  "name": "claude-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Headless Claude Code exposed as an OpenAI-compatible endpoint for the notetaker chat.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest"
+  }
+}

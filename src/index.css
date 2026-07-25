@@ -1,0 +1,32 @@
+/* Full-screen, gesture-locked shell tuned for iPad Safari + Apple Pencil. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  overscroll-behavior: none;
+  background: #101011;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  /* Let tldraw own all touch/pointer handling; suppress browser scroll/zoom. */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Prevent the iOS callout/selection menu on long-press. */
+  -webkit-touch-callout: none;
+}
+
+.tldraw-host {
+  position: absolute;
+  inset: 0;
+}

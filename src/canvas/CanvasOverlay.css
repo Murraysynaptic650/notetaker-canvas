@@ -1,0 +1,116 @@
+/* Overlay sits above the tldraw UI but out of the way of the top toolbar,
+   respecting the iPad safe area (notch / home indicator). */
+/* Pinned top-left, clear of tldraw's own top-right style panel and
+   bottom-right zoom/navigation controls. Offset down past tldraw's menu
+   button in the corner. */
+.canvas-overlay {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  left: calc(env(safe-area-inset-left, 0px) + 8px);
+  z-index: 300;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  max-width: min(280px, calc(100vw - 16px));
+  gap: 8px;
+  pointer-events: none;
+}
+
+.overlay-file-input {
+  /* Visually hidden but still focusable/clickable via the ref. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  pointer-events: none;
+}
+
+.canvas-overlay > * {
+  pointer-events: auto;
+}
+
+.overlay-btn {
+  appearance: none;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--color-panel, #fff);
+  color: var(--color-text, #101011);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  /* Comfortable touch target on iPad. */
+  min-height: 40px;
+}
+
+.overlay-btn--active {
+  background: #2f80ed;
+  color: #fff;
+  border-color: #2f80ed;
+}
+
+.overlay-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.overlay-menu {
+  position: relative;
+}
+
+.overlay-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  background: var(--color-panel, #fff);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  z-index: 301;
+}
+
+.overlay-menu-list button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-text, #101011);
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+.overlay-menu-list button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.overlay-menu-list button + button {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.overlay-menu-list button.overlay-menu-danger {
+  color: #c0392b;
+}
+
+.overlay-menu-list button.overlay-menu-danger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.overlay-error {
+  max-width: 260px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}

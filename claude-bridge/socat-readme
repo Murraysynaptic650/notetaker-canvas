@@ -1,0 +1,15 @@
+Useful commands going forward:
+
+bash
+# Check it's running
+launchctl list | grep socat-ocr-proxy
+
+# Stop it
+launchctl unload ~/Library/LaunchAgents/com.local.socat-ocr-proxy.plist
+
+# Restart after editing the plist
+launchctl unload ~/Library/LaunchAgents/com.local.socat-ocr-proxy.plist
+launchctl load ~/Library/LaunchAgents/com.local.socat-ocr-proxy.plist
+
+# Watch logs if something breaks
+tail -f /tmp/socat-ocr-proxy.err

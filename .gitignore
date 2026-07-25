@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Vite scratch files
+vite.config.ts.timestamp-*.mjs
+.vite/
+
+# Test output
+coverage/
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+
+# Local env / secrets — API keys belong in the environment, never in the repo
+.env
+.env.local
+.env.*.local
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json

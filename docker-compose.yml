@@ -1,0 +1,31 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-nemotron          # keep the name so your tooling/logs match
+    runtime: nvidia
+    restart: unless-stopped
+    ipc: host
+    ports:
+      - "8000:8000"
+    environment:
+      # Lock it to your specific MIG slice
+      - NVIDIA_VISIBLE_DEVICES=MIG-7095ff67-0a9a-59f5-a8ab-9816dce2bce1
+      # Compute only, skip the broken EGL mount
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    entrypoint: ["/bin/bash", "-c"]
+    # IMPORTANT: the whole command MUST stay wrapped in outer double-quotes.
+    # With exec-form `bash -c`, an unquoted command gets word-split and only
+    # `python3` runs as the script (bare Python -> EOF -> exit 0, no logs).
+    # The origins JSON keeps its inner quotes ESCAPED as \" — same as the
+    # working Nemotron config — so vLLM parses ["*"] rather than [*].
+    command: >
+      "python3 -m vllm.entrypoints.openai.api_server
+      --model Qwen/Qwen2.5-VL-7B-Instruct-AWQ
+      --trust-remote-code
+      --max-model-len 16384
+      --gpu-memory-utilization 0.90
+      --host 0.0.0.0
+      --port 8000
+      --served-model-name local-model --allowed-origins '[\"*\"]' "
