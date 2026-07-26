@@ -26,7 +26,15 @@ export interface ParsedReply {
 
 // Prefer a fenced block (```tldraw or ```json or bare ```), but small models
 // often forget the fence, so we also fall back to a bare JSON array of ops.
-const FENCED_BLOCK = /```(?:tldraw|json)?\s*([\s\S]*?)```/i
+//
+// Global, because a reply may contain several fenced blocks — a code example
+// the user asked about, then the actions block. The system prompt puts the
+// actions block LAST, so we scan from the end and take the first block that
+// actually looks like draw ops. Matching the first block instead would let a
+// fenced JSON *data* array (which parses fine but has no `op` fields) be
+// applied as ops: nothing gets drawn, the real block is ignored, and the data
+// block vanishes from the chat.
+const FENCED_BLOCK = /```(?:tldraw|json)?[^\S\n]*\n?([\s\S]*?)```/gi
 const BARE_ARRAY = /\[\s*\{[\s\S]*\}\s*\]/
 
 const GEO_SHAPES = new Set([
@@ -41,11 +49,12 @@ const COLORS = new Set([
 ])
 
 export function parseReply(raw: string): ParsedReply {
-  // 1) Fenced block — the format we ask for.
-  const fenced = raw.match(FENCED_BLOCK)
-  if (fenced) {
-    const actions = parseActions(fenced[1])
-    if (actions) return { text: raw.replace(fenced[0], '').trim(), actions }
+  // 1) Fenced block — the format we ask for. Last matching block wins.
+  for (const match of [...raw.matchAll(FENCED_BLOCK)].reverse()) {
+    const actions = parseActions(match[1])
+    if (actions && looksLikeActions(actions)) {
+      return { text: raw.replace(match[0], '').trim(), actions }
+    }
   }
 
   // 2) Fallback: a bare JSON array of ops the model dropped into the text.
