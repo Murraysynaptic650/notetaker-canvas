@@ -43,6 +43,8 @@ Open the **💬 AI** button (bottom-left). Header controls:
 | 🗑️ | Clear the conversation |
 
 Input row: **🎤 voice** (speech-to-text, auto-sends each phrase) and a text box.
+While a reply is streaming, **Send** becomes **Stop** — cancelling keeps
+whatever text already arrived.
 
 ### What it can do
 - **See the board** — a snapshot image is sent every turn (downscaled to ≤1280px,
@@ -123,7 +125,8 @@ src/
   export/        PNG/SVG export, .tldr save/load
   ai/
     AiPanel.tsx        chat UI + provider settings
-    useAiChat.ts       conversation state, streaming, board context, compaction
+    useAiChat.ts       conversation state, streaming, board context, compaction,
+                       cancellation (AbortController per request)
     llmClient.ts       provider-agnostic streaming (Anthropic SDK + OpenAI SSE)
     settingsStore.ts   provider config in localStorage
     boardContext.ts    board→text summary, board→image snapshot (+ downscale)
@@ -142,7 +145,36 @@ Request relays (dev server, `vite.config.ts`): `/llm` → vLLM, `/agent` → bri
 - `boardContext.ts` — `MAX_IMAGE_EDGE` (1280), `JPEG_QUALITY` (0.85). **Raise the
   edge for better OCR/handwriting** (costs tokens).
 - `useAiChat.ts` — `MAX_HISTORY_MESSAGES` (8).
+- `llmClient.ts` — `MAX_TOKENS` (4096). Must cover the chat text *and* any
+  trailing `tldraw` actions block; too low truncates the JSON mid-block and the
+  drawing is silently dropped.
 - vLLM — `--max-model-len`; bridge — `MAX_THINKING_TOKENS`.
+
+---
+
+## Tests
+
+```bash
+npm test           # unit tests (vitest)
+npm run coverage   # + coverage report, gated at 80%
+npm run lint       # eslint
+npm run verify     # typecheck + lint + coverage — run this before committing
+```
+
+The coverage gate covers the **logic layer** (`ai/` parsing, streaming, board
+context, settings; `export/filename`). UI components and thin browser-API
+wrappers — canvas capture, SpeechRecognition, service-worker registration,
+file download/share — are deliberately outside it: a unit test there only
+asserts against its own mock. Those want an E2E suite (Playwright) driving a
+real browser, which doesn't exist yet.
+
+Two behaviours worth knowing, both pinned by tests:
+- The AI's draw-actions block is taken from the **last** fenced block in a
+  reply, so a code example earlier in the answer isn't mistaken for it.
+- On the local provider, `ThinkFilter` can't tell "reasoning with an implicit
+  `<think>`" from "a plain answer" until it sees `</think>` or the stream ends —
+  so a *non*-reasoning local model delivers its reply in one lump rather than
+  token by token.
 
 ---
 
@@ -168,4 +200,7 @@ Request relays (dev server, `vite.config.ts`): `/llm` → vLLM, `/agent` → bri
 npm run dev        # dev server (LAN + proxies), no service worker
 npm run build      # production build (tsc + vite)
 npm run preview    # serve the built PWA
+npm run verify     # typecheck + lint + coverage
+npm test           # unit tests
+npm run lint       # eslint
 ```
