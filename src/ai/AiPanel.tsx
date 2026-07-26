@@ -29,7 +29,7 @@ export function AiPanel({ editor }: AiPanelProps) {
   const [showSettings, setShowSettings] = useState(() => !isConfigured(getSettings()))
   const [draft, setDraft] = useState('')
 
-  const { messages, isSending, error, sendMessage, sendAuto, clearError, resetConversation } =
+  const { messages, isSending, error, sendMessage, sendAuto, stop, clearError, resetConversation } =
     useAiChat(editor)
 
   const handleSend = useCallback(() => {
@@ -190,9 +190,15 @@ export function AiPanel({ editor }: AiPanelProps) {
                   placeholder="Write, speak, or ask a question…"
                   rows={2}
                 />
-                <button type="button" onClick={handleSend} disabled={isSending || !draft.trim()}>
-                  Send
-                </button>
+                {isSending ? (
+                  <button type="button" onClick={stop} title="Stop generating">
+                    Stop
+                  </button>
+                ) : (
+                  <button type="button" onClick={handleSend} disabled={!draft.trim()}>
+                    Send
+                  </button>
+                )}
               </div>
             </>
           )}

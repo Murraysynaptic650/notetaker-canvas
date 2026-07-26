@@ -18,7 +18,11 @@ export interface StreamOptions {
   signal?: AbortSignal
 }
 
-const MAX_TOKENS = 1024
+// Reply budget. This has to cover the chat text *and* any trailing `tldraw`
+// actions block — a multi-shape diagram is easily several hundred tokens of
+// JSON on its own. At 1024 a normal answer followed by a diagram could be cut
+// off mid-JSON, which fails to parse and silently drops the drawing.
+const MAX_TOKENS = 4096
 
 // Google exposes Gemini through an OpenAI-compatible surface, so it shares the
 // same streaming path as vLLM/Ollama — only the base URL is fixed here.

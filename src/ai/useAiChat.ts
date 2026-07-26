@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor, TLShapeId } from 'tldraw'
 import { applyBoardActions, parseReply } from './boardActions'
 import {
@@ -74,13 +74,21 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
 export function useAiChat(editor: Editor) {
   const [state, setState] = useState<AiChatState>(INITIAL_STATE)
   const sendingRef = useRef(false)
+  // Controls the in-flight request so it can be cancelled — by the user hitting
+  // Stop, or by unmount. Without this a long local-model reply keeps streaming
+  // into a dead component after the panel closes.
+  const abortRef = useRef<AbortController | null>(null)
   // Latest committed messages, so `run` can read them without being
   // re-created and without racing with streaming state updates. Excludes the
   // empty placeholder bubble used while a reply streams in.
+  // Written in an effect rather than during render; `run` only reads it from
+  // event handlers and timers, which always run after the effect has committed.
   const stateMessagesRef = useRef<ChatMessage[]>(INITIAL_STATE.messages)
-  stateMessagesRef.current = state.messages.filter(
-    (message) => !(message.role === 'assistant' && message.text === ''),
-  )
+  useEffect(() => {
+    stateMessagesRef.current = state.messages.filter(
+      (message) => !(message.role === 'assistant' && message.text === ''),
+    )
+  }, [state.messages])
 
   const run = useCallback(
     async (userTurn: ChatMessage) => {
@@ -96,6 +104,8 @@ export function useAiChat(editor: Editor) {
       }
 
       sendingRef.current = true
+      const controller = new AbortController()
+      abortRef.current = controller
       const priorMessages = stateMessagesRef.current
       const withUser = [...priorMessages, userTurn]
       // Add an empty assistant bubble that we fill as tokens stream in.
@@ -119,6 +129,7 @@ export function useAiChat(editor: Editor) {
           system: `${SYSTEM_PROMPT}\n\n${context.placement}\n\n${context.summary}${boardReplyDirective}`,
           messages: apiTurns,
           boardImage,
+          signal: controller.signal,
           onToken: (delta) => {
             setState((previous) => ({
               ...previous,
@@ -139,12 +150,23 @@ export function useAiChat(editor: Editor) {
           messages: setLastAssistantText(previous.messages, displayText),
         }))
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "The AI didn't respond. Please try again."
-        // Drop the empty assistant placeholder, surface the error.
-        setState({ messages: withUser, isSending: false, error: message })
+        if (controller.signal.aborted) {
+          // Deliberate cancel, not a failure. Keep whatever streamed in so the
+          // partial answer isn't thrown away; drop the bubble if it's empty.
+          setState((previous) => ({
+            messages: dropEmptyTrailingAssistant(previous.messages),
+            isSending: false,
+            error: null,
+          }))
+        } else {
+          const message =
+            error instanceof Error ? error.message : "The AI didn't respond. Please try again."
+          // Drop the empty assistant placeholder, surface the error.
+          setState({ messages: withUser, isSending: false, error: message })
+        }
       } finally {
         sendingRef.current = false
+        if (abortRef.current === controller) abortRef.current = null
       }
     },
     [editor],
@@ -160,15 +182,24 @@ export function useAiChat(editor: Editor) {
     [run],
   )
 
+  /** Cancel the in-flight reply, keeping whatever has streamed in so far. */
+  const stop = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
+  // Don't leave a stream running against an unmounted panel.
+  useEffect(() => () => abortRef.current?.abort(), [])
+
   const clearError = useCallback(() => {
     setState((previous) => ({ ...previous, error: null }))
   }, [])
 
   const resetConversation = useCallback(() => {
+    abortRef.current?.abort()
     setState(INITIAL_STATE)
   }, [])
 
-  return { ...state, sendMessage, sendAuto, clearError, resetConversation }
+  return { ...state, sendMessage, sendAuto, stop, clearError, resetConversation }
 }
 
 interface BoardContext {
@@ -208,6 +239,12 @@ function appendToLastAssistant(messages: ChatMessage[], delta: string): ChatMess
       ? { ...message, text: message.text + delta }
       : message,
   )
+}
+
+/** Remove the streaming placeholder bubble if nothing ever arrived in it. */
+function dropEmptyTrailingAssistant(messages: ChatMessage[]): ChatMessage[] {
+  const last = messages[messages.length - 1]
+  return last && last.role === 'assistant' && last.text === '' ? messages.slice(0, -1) : messages
 }
 
 function setLastAssistantText(messages: ChatMessage[], text: string): ChatMessage[] {
