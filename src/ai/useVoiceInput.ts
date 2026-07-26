@@ -24,10 +24,15 @@ export function useVoiceInput({ onInterim, onFinal }: VoiceInputOptions): VoiceI
 
   const [listening, setListening] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  // Latest callbacks, kept in refs so `start` stays stable across renders.
+  // Assigned in an effect because they're only read from SpeechRecognition
+  // events, which fire long after the effect has committed.
   const onInterimRef = useRef(onInterim)
   const onFinalRef = useRef(onFinal)
-  onInterimRef.current = onInterim
-  onFinalRef.current = onFinal
+  useEffect(() => {
+    onInterimRef.current = onInterim
+    onFinalRef.current = onFinal
+  })
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop()

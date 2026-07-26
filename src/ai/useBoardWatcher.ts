@@ -24,11 +24,15 @@ export function useBoardWatcher(
   enabled: boolean,
   { getSnapshot, onSettled, delay = DEFAULT_DELAY }: BoardWatcherOptions,
 ): void {
-  // Keep the latest callbacks in refs so re-renders don't re-subscribe.
+  // Keep the latest callbacks in refs so re-renders don't re-subscribe. Written
+  // in an effect rather than during render: the refs are only ever read from a
+  // store listener or timer, both of which run after the effect has committed.
   const getSnapshotRef = useRef(getSnapshot)
   const onSettledRef = useRef(onSettled)
-  getSnapshotRef.current = getSnapshot
-  onSettledRef.current = onSettled
+  useEffect(() => {
+    getSnapshotRef.current = getSnapshot
+    onSettledRef.current = onSettled
+  })
 
   useEffect(() => {
     if (!enabled) return

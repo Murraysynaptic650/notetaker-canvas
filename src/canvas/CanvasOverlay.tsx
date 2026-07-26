@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Editor } from 'tldraw'
 import { isPenModeEnabled, isTouchDevice, setPenMode } from './ipadTuning'
 import { useEditorState } from './useEditorState'
@@ -21,7 +21,10 @@ interface CanvasOverlayProps {
  * those are off-limits for custom controls.
  */
 export function CanvasOverlay({ editor }: CanvasOverlayProps) {
-  const [showPencilToggle, setShowPencilToggle] = useState(false)
+  // Read once at mount via a lazy initializer. This is a client-only SPA (no
+  // SSR to hydrate against) and `isTouchDevice` guards `window` itself, so
+  // there's no need to defer the check to an effect and re-render.
+  const [showPencilToggle] = useState(isTouchDevice)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const { isExporting, error: exportError, runExport, clearError: clearExportError } = useExport(editor)
   const {
@@ -39,10 +42,6 @@ export function CanvasOverlay({ editor }: CanvasOverlayProps) {
     clearExportError()
     clearBoardFileError()
   }
-
-  useEffect(() => {
-    setShowPencilToggle(isTouchDevice())
-  }, [])
 
   const penMode = useEditorState(editor, isPenModeEnabled)
   const hasSelection = useEditorState(
