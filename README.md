@@ -8,6 +8,10 @@ agent on your Mac.
 
 Installable as a PWA. Board state persists locally (IndexedDB) and works offline.
 
+> **Working on the code?** [`docs/GLOSSARY.md`](docs/GLOSSARY.md) defines the
+> project's vocabulary and the invariants the AI features depend on;
+> [`CLAUDE.md`](CLAUDE.md) covers conventions and the verify gate.
+
 ---
 
 ## Quick start
