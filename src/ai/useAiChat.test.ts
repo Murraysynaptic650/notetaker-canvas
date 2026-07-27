@@ -14,9 +14,16 @@ function stubEditor(): Editor {
     getCurrentPageShapeIds: () => new Set(),
     getSelectedShapeIds: () => [],
     getShape: () => undefined,
+    getShapePageBounds: () => ({ minX: 0, minY: 0, maxX: 100, maxY: 100 }),
     createShape: vi.fn(),
     createAssets: vi.fn(),
-    store: { mergeRemoteChanges: (fn: () => void) => fn() },
+    createBinding: vi.fn(),
+    updateShape: vi.fn(),
+    store: {
+      mergeRemoteChanges: (fn: () => void) => fn(),
+      // useLastEditedShape subscribes here; nothing in these tests drives it.
+      listen: () => () => {},
+    },
   } as unknown as Editor
 }
 
@@ -235,6 +242,38 @@ describe('useAiChat', () => {
     expect(lastPayload[0].role).toBe('user')
     // The UI keeps everything: 6 user + 6 assistant.
     expect(result.current.messages).toHaveLength(12)
+  })
+
+  it('sends the labelled scene graph, not just a list of strings', async () => {
+    // The whole spatial fix depends on this reaching the model: handles with
+    // exact bounds, so it can anchor instead of estimating coordinates.
+    const editor = {
+      getViewportPageBounds: () => ({ minX: 0, minY: 0, maxX: 1200, maxY: 800 }),
+      getCurrentPageShapes: () => [
+        { id: 'shape:cache', type: 'geo', x: 200, y: 200, props: { geo: 'rectangle', text: 'Cache' } },
+      ],
+      getCurrentPageShapeIds: () => new Set(),
+      getSelectedShapeIds: () => [],
+      getShapePageBounds: () => ({ minX: 200, minY: 200, maxX: 380, maxY: 290 }),
+      getShape: () => undefined,
+      createShape: vi.fn(),
+      createAssets: vi.fn(),
+      createBinding: vi.fn(),
+      updateShape: vi.fn(),
+      store: { mergeRemoteChanges: (fn: () => void) => fn(), listen: () => () => {} },
+    } as unknown as Editor
+
+    const streamChat = vi.spyOn(llmClient, 'streamChat').mockResolvedValue('ok')
+    const { result } = renderHook(() => useAiChat(editor))
+    await act(async () => {
+      await result.current.sendMessage('what next?')
+    })
+
+    const system = streamChat.mock.calls[0][0].system
+    expect(system).toContain('S1')
+    expect(system).toContain('200,200')
+    expect(system).toContain('380,290')
+    expect(system).toContain('Cache')
   })
 
   it('marks auto-watch turns so the UI can style them differently', async () => {

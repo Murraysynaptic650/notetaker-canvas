@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor, TLShapeId } from 'tldraw'
 import { applyBoardActions, parseReply } from './boardActions'
-import {
-  captureBoardImage,
-  getSelectedShapeIds,
-  summarizeBoardText,
-  summarizeSelection,
-} from './boardContext'
+import { captureBoardImage, getSelectedShapeIds, summarizeSelection } from './boardContext'
+import { buildBoardScene, describeBoardScene } from './boardScene'
+import type { SceneShape } from './sceneGraph'
+import { useLastEditedShape } from './useLastEditedShape'
 import { streamChat, type ChatTurn } from './llmClient'
 import { getSettings, isConfigured, type AiSettings } from './settingsStore'
 
@@ -27,18 +25,34 @@ const SYSTEM_PROMPT = `You are a collaborative study partner working alongside t
 
 Be an active collaborator, not just a Q&A bot: build on the user's ideas, ask clarifying or probing questions when it helps their thinking, point out gaps or connections in the notes, and suggest what to add or explore next. Keep responses conversational and concise — this is a live back-and-forth, not an essay.
 
-DRAWING ON THE BOARD: When the user asks you to draw, sketch, diagram, label, or add something — or when a quick visual is clearly the natural next step — you may append ONE fenced code block at the very END of your reply, tagged \`tldraw\`, containing a JSON array of draw ops. Write your normal chat text first, then the block. Omit the block entirely for ordinary replies (most don't need it). Supported ops:
-- {"op":"text","x":N,"y":N,"text":"..."}
-- {"op":"note","x":N,"y":N,"text":"..."}
-- {"op":"geo","shape":"rectangle|ellipse|triangle|diamond|hexagon|star|cloud","x":N,"y":N,"w":N,"h":N,"text":"optional label","color":"blue"}
-- {"op":"arrow","x1":N,"y1":N,"x2":N,"y2":N,"text":"optional label","color":"black"}
-- {"op":"line","x1":N,"y1":N,"x2":N,"y2":N,"color":"black"}
-- {"op":"image","url":"https://… or data:image/png;base64,…","x":N,"y":N,"w":N,"h":N}
-Coordinates are absolute page coordinates: x grows right, y grows down. Colors: black, grey, blue, light-blue, green, light-green, red, light-red, orange, yellow, violet, light-violet. Place shapes inside the visible area given below and avoid overlapping existing content.
+DRAWING ON THE BOARD: When the user asks you to draw, sketch, diagram, label, or add something — or when a quick visual is clearly the natural next step — you may append ONE fenced code block at the very END of your reply, tagged \`tldraw\`, containing a JSON array of draw ops. Write your normal chat text first, then the block. Omit the block entirely for ordinary replies (most don't need it).
 
-Example — a labelled box with an arrow pointing out of it:
+POSITIONING — read this carefully; it is what makes your drawing land in the right place.
+Every shape already on the board is listed below with a HANDLE (S1, S2, …), its kind, its exact bounds and its text. Say WHERE your shapes go by anchoring to a handle. Do NOT estimate coordinates from the image — you cannot judge them accurately, and the app computes exact positions for you (including avoiding overlaps) when you anchor.
+
+- {"op":"note","anchor":"S3","side":"right","gap":40,"text":"..."}
+- {"op":"text","anchor":"S3","side":"below","text":"..."}
+- {"op":"geo","shape":"rectangle|ellipse|triangle|diamond|hexagon|star|cloud","anchor":"S3","side":"right","w":N,"h":N,"text":"optional label","color":"blue"}
+- {"op":"arrow","from":"S3","to":"S7","text":"optional label","color":"black"}
+- {"op":"update","target":"S3","text":"replacement text"}
+- {"op":"line","x1":N,"y1":N,"x2":N,"y2":N,"color":"black"}
+- {"op":"image","url":"https://… or data:image/png;base64,…","anchor":"S3","side":"below","w":N,"h":N}
+
+"side" is one of: right, left, above, below, center, tip. "tip" means the arrowhead end of an arrow handle — use it to continue a flow the user has started. "gap" is optional spacing in pixels (default 40, or 0 for tip).
+
+ARROWS: prefer {"from":"S3","to":"S7"} with handles — that binds the arrow to those shapes so it stays attached when they are moved. Only use {"x1","y1","x2","y2"} when an end genuinely has no shape at it.
+
+EDITING: use {"op":"update","target":"S3","text":"..."} to rewrite an existing shape's text instead of adding a near-duplicate next to it.
+
+REFERRING TO SHAPES YOU CREATE: shapes you add in this reply get handles N1, N2, … in the order you list them, so a later op can anchor or connect to them. To extend a flow: add the box, then connect it.
+
+ABSOLUTE COORDINATES: only when there is no sensible anchor (an empty board, or a deliberately unrelated position). Then give "x"/"y" in absolute page coordinates: x grows right, y grows down. Colors: black, grey, blue, light-blue, green, light-green, red, light-red, orange, yellow, violet, light-violet.
+
+WHERE THE USER IS WORKING: if a USER POINTER is given below, the user is asking about that exact spot — anchor your response to it. If it is an arrow, continue from its tip.
+
+Example — the user drew an arrow (S2) out of a "Cache" box (S1) and asked you to continue the flow:
 \`\`\`tldraw
-[{"op":"geo","shape":"rectangle","x":200,"y":200,"w":180,"h":90,"text":"Cache","color":"blue"},{"op":"arrow","x1":380,"y1":245,"x2":520,"y2":245,"color":"black"}]
+[{"op":"geo","shape":"rectangle","anchor":"S2","side":"tip","w":180,"h":90,"text":"Database","color":"blue"},{"op":"arrow","from":"N1","to":"S1","text":"read-through"}]
 \`\`\``
 
 const AUTO_PROMPT =
@@ -74,6 +88,9 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
 export function useAiChat(editor: Editor) {
   const [state, setState] = useState<AiChatState>(INITIAL_STATE)
   const sendingRef = useRef(false)
+  // The shape the user last drew or edited — the fallback "pointer" telling
+  // the model where on the board the request is about.
+  const lastEditedId = useLastEditedShape(editor)
   // Controls the in-flight request so it can be cancelled — by the user hitting
   // Stop, or by unmount. Without this a long local-model reply keeps streaming
   // into a dead component after the panel closes.
@@ -120,13 +137,13 @@ export function useAiChat(editor: Editor) {
       }))
 
       try {
-        const context = buildContext(editor, settings)
+        const context = buildContext(editor, settings, lastEditedId.current)
         const boardImage = await captureBoardImage(editor, context.imageShapeIds)
         const boardReplyDirective = settings.boardReply ? BOARD_REPLY_DIRECTIVE : ''
 
         const reply = await streamChat({
           settings,
-          system: `${SYSTEM_PROMPT}\n\n${context.placement}\n\n${context.summary}${boardReplyDirective}`,
+          system: `${SYSTEM_PROMPT}\n\n${context.summary}${boardReplyDirective}`,
           messages: apiTurns,
           boardImage,
           signal: controller.signal,
@@ -141,7 +158,9 @@ export function useAiChat(editor: Editor) {
         // Draw whatever the model asked for, and show the reply without the
         // raw actions block cluttering the chat bubble.
         const { text, actions } = parseReply(reply)
-        const createdIds = applyBoardActions(editor, actions)
+        // Pass the same scene the model saw, so its handles resolve to the
+        // right shapes and placements are computed against real bounds.
+        const createdIds = applyBoardActions(editor, actions, context.scene)
         const displayText =
           text || (createdIds.length > 0 ? '✏️ Added that to the board.' : reply)
         setState((previous) => ({
@@ -169,7 +188,9 @@ export function useAiChat(editor: Editor) {
         if (abortRef.current === controller) abortRef.current = null
       }
     },
-    [editor],
+    // lastEditedId is a ref, so its identity is stable — listing it satisfies
+    // the exhaustive-deps rule without causing `run` to be rebuilt.
+    [editor, lastEditedId],
   )
 
   const sendMessage = useCallback(
@@ -203,33 +224,41 @@ export function useAiChat(editor: Editor) {
 }
 
 interface BoardContext {
-  /** Note on the visible page area, so drawn shapes land in view. */
-  placement: string
-  /** Text summary (whole board, or just the focused selection). */
+  /** The labelled scene: visible area, shape inventory with bounds, pointer. */
   summary: string
   /** Shapes to snapshot for the image — the selection when focusing, else the whole page. */
   imageShapeIds?: TLShapeId[]
+  /** The labelled shapes, so replies can be resolved back to real shape ids. */
+  scene: SceneShape[]
 }
 
-function buildContext(editor: Editor, settings: AiSettings): BoardContext {
-  const bounds = editor.getViewportPageBounds()
-  const placement = `Visible board area: x from ${Math.round(bounds.minX)} to ${Math.round(
-    bounds.maxX,
-  )}, y from ${Math.round(bounds.minY)} to ${Math.round(bounds.maxY)}.`
+/**
+ * Assemble what the model is told about the board.
+ *
+ * The scene graph carries exact geometry for every shape, which is what lets
+ * the model place things precisely — it anchors to a handle instead of
+ * estimating coordinates off the snapshot. Focus mode still crops the *image*
+ * to the selection, but the full inventory is always sent so the model can
+ * position relative to anything on the board.
+ */
+function buildContext(
+  editor: Editor,
+  settings: AiSettings,
+  lastEditedId: string | null,
+): BoardContext {
+  const scene = buildBoardScene(editor, lastEditedId)
+  const description = describeBoardScene(scene)
 
   const selectedIds = settings.focusSelection ? getSelectedShapeIds(editor) : []
   if (selectedIds.length > 0) {
     return {
-      placement,
-      summary: `The user has POINTED AT specific shapes — focus your response on these:\n${summarizeSelection(editor)}`,
+      summary: `${description}\n\nThe user has POINTED AT specific shapes — focus your response on these:\n${summarizeSelection(editor)}`,
       imageShapeIds: selectedIds,
+      scene: scene.shapes,
     }
   }
 
-  return {
-    placement,
-    summary: `Text summary of typed board shapes (may be incomplete):\n${summarizeBoardText(editor)}`,
-  }
+  return { summary: description, scene: scene.shapes }
 }
 
 function appendToLastAssistant(messages: ChatMessage[], delta: string): ChatMessage[] {
