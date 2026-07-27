@@ -77,8 +77,13 @@ function summarizeShapes(shapes: TLShape[], maxChars: number, emptyText: string)
   return joined.length > maxChars ? `${joined.slice(0, maxChars)}…` : joined
 }
 
-function extractShapeText(shape: TLShape): string | null {
-  const props = shape.props as Record<string, unknown>
+/**
+ * Plain text carried by a shape, from either `props.text` or flattened
+ * `props.richText`. Exported for the scene graph, which needs the same
+ * extraction per shape rather than for the board as a whole.
+ */
+export function extractShapeText(shape: TLShape): string | null {
+  const props = (shape.props ?? {}) as Record<string, unknown>
   if (typeof props.text === 'string') return props.text
   if (typeof props.richText === 'object' && props.richText !== null) {
     return extractPlainTextFromRichText(props.richText)
