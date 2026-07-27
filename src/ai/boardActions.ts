@@ -9,6 +9,9 @@ import {
   type TLShapeId,
   type TLShapePartial,
 } from 'tldraw'
+import { boundsOf, centerOf, type Bounds } from './geometry'
+import { resolvePlacement, type PlacementSide } from './placement'
+import type { SceneShape } from './sceneGraph'
 
 /**
  * Lets the LLM draw/write on the whiteboard. The model may append a fenced
@@ -87,17 +90,73 @@ function looksLikeActions(actions: unknown[]): boolean {
 }
 
 /**
+ * Tracks the board's occupied space across a batch, so shapes the model
+ * creates in one reply don't land on the board's existing content *or* on each
+ * other.
+ */
+interface ApplySession {
+  byHandle: Map<string, SceneShape>
+  occupied: Bounds[]
+  /** How many shapes this batch has created, for numbering N-handles. */
+  createdCount: number
+}
+
+// Connectors don't occupy space for layout purposes. A flowchart is mostly
+// arrows, and treating them as blockers would shove every new shape away from
+// the very places the user wants things — including the tip of the arrow they
+// just drew.
+const NON_BLOCKING_TYPES = new Set(['arrow', 'line', 'highlight'])
+
+function startSession(scene?: SceneShape[]): ApplySession {
+  const shapes = scene ?? []
+  return {
+    byHandle: new Map(shapes.map((shape) => [shape.handle, shape])),
+    occupied: shapes
+      .filter((shape) => !NON_BLOCKING_TYPES.has(shape.type))
+      .map((shape) => shape.bounds),
+    createdCount: 0,
+  }
+}
+
+/**
+ * Register a shape created during this batch under an `N1`, `N2`… handle, so
+ * later ops in the same reply can refer to it — that's what lets the model add
+ * a box and then connect an arrow to it in one go, which "complete this
+ * flowchart" needs constantly.
+ */
+function registerCreated(
+  session: ApplySession,
+  id: TLShapeId,
+  type: string,
+  bounds: Bounds,
+): void {
+  session.createdCount += 1
+  const handle = `N${session.createdCount}`
+  session.byHandle.set(handle, { handle, id: String(id), type, bounds, text: '' })
+}
+
+/**
  * Apply draw ops to the board. Marked as a "remote" change so the auto-watch
  * trigger doesn't treat the AI's own drawing as a user edit (which would loop).
  * Each op is applied independently so one bad op doesn't drop the whole batch.
  * Returns the ids created, so the caller can select/reveal them.
+ *
+ * Pass `scene` (the labelled shapes sent to the model this turn) to enable
+ * anchor-relative placement, arrow binding and updates — without it, ops fall
+ * back to absolute coordinates exactly as before.
  */
-export function applyBoardActions(editor: Editor, actions: unknown[]): TLShapeId[] {
+export function applyBoardActions(
+  editor: Editor,
+  actions: unknown[],
+  scene?: SceneShape[],
+): TLShapeId[] {
   const created: TLShapeId[] = []
+  const session = startSession(scene)
+
   editor.store.mergeRemoteChanges(() => {
     for (const action of actions) {
       try {
-        const id = applyOne(editor, action)
+        const id = applyOne(editor, action, session)
         if (id) created.push(id)
       } catch {
         // Skip a single malformed op rather than failing the whole reply.
@@ -107,60 +166,67 @@ export function applyBoardActions(editor: Editor, actions: unknown[]): TLShapeId
   return created
 }
 
-function applyOne(editor: Editor, action: unknown): TLShapeId | null {
+// Fallback sizes, used for collision bookkeeping when the model doesn't say
+// how big a shape is. Approximate is fine — they only affect spacing.
+const DEFAULT_NOTE_SIZE = { w: 200, h: 200 }
+const DEFAULT_TEXT_SIZE = { w: 200, h: 50 }
+
+function applyOne(editor: Editor, action: unknown, session: ApplySession): TLShapeId | null {
   if (!action || typeof action !== 'object') return null
   const op = action as Record<string, unknown>
   const color = pickColor(op.color)
   const id = newId()
 
   switch (String(op.op ?? '')) {
-    case 'text':
+    case 'text': {
+      const at = place(op, session, DEFAULT_TEXT_SIZE.w, DEFAULT_TEXT_SIZE.h)
       editor.createShape({
         id,
         type: 'text',
-        x: num(op.x),
-        y: num(op.y),
+        x: at.x,
+        y: at.y,
         props: { richText: toRichText(str(op.text)), color },
       } as TLShapePartial)
+      registerCreated(session, id, 'text', at.bounds)
       return id
-    case 'note':
+    }
+    case 'note': {
+      const at = place(op, session, DEFAULT_NOTE_SIZE.w, DEFAULT_NOTE_SIZE.h)
       editor.createShape({
         id,
         type: 'note',
-        x: num(op.x),
-        y: num(op.y),
+        x: at.x,
+        y: at.y,
         props: { richText: toRichText(str(op.text)), color },
       } as TLShapePartial)
+      registerCreated(session, id, 'note', at.bounds)
       return id
-    case 'geo':
+    }
+    case 'geo': {
+      const w = Math.max(1, num(op.w, 160))
+      const h = Math.max(1, num(op.h, 100))
+      const at = place(op, session, w, h)
       editor.createShape({
         id,
         type: 'geo',
-        x: num(op.x),
-        y: num(op.y),
+        x: at.x,
+        y: at.y,
         props: {
           geo: pickGeo(op.shape),
-          w: Math.max(1, num(op.w, 160)),
-          h: Math.max(1, num(op.h, 100)),
+          w,
+          h,
           color,
           richText: toRichText(str(op.text)),
         },
       } as TLShapePartial)
+      registerCreated(session, id, 'geo', at.bounds)
       return id
+    }
     case 'arrow':
-      editor.createShape({
-        id,
-        type: 'arrow',
-        x: 0,
-        y: 0,
-        props: {
-          start: { x: num(op.x1), y: num(op.y1) },
-          end: { x: num(op.x2), y: num(op.y2) },
-          color,
-          text: str(op.text),
-        },
-      } as TLShapePartial)
-      return id
+      return createArrow(editor, op, id, session, color)
+    case 'update':
+      updateShapeText(editor, op, session)
+      return null // an edit, not a creation
     case 'line':
       // A plain line = an arrow with both arrowheads removed.
       editor.createShape({
@@ -178,19 +244,142 @@ function applyOne(editor: Editor, action: unknown): TLShapeId | null {
       } as TLShapePartial)
       return id
     case 'image':
-      return createImage(editor, op, id)
+      return createImage(editor, op, id, session)
     default:
       return null
   }
 }
 
+/**
+ * Resolve where a shape goes, then record the space it takes so later ops in
+ * the same batch avoid it.
+ *
+ * This is the heart of the spatial fix: the model names an anchor and a side,
+ * and the exact arithmetic happens here against real bounds — rather than the
+ * model estimating coordinates off a flat image.
+ */
+function place(
+  op: Record<string, unknown>,
+  session: ApplySession,
+  w: number,
+  h: number,
+): { x: number; y: number; bounds: Bounds } {
+  const anchor = resolveHandle(op.anchor, session)
+
+  const at = resolvePlacement(
+    {
+      w,
+      h,
+      anchor: anchor
+        ? { bounds: anchor.bounds, tip: anchor.tip, direction: anchor.direction }
+        : undefined,
+      side: pickSide(op.side),
+      gap: typeof op.gap === 'number' ? op.gap : undefined,
+      x: num(op.x),
+      y: num(op.y),
+    },
+    session.occupied,
+  )
+
+  const bounds = boundsOf(at.x, at.y, w, h)
+  session.occupied.push(bounds)
+  return { ...at, bounds }
+}
+
+/** Look up a scene handle like "S3" or a batch-local "N1". */
+function resolveHandle(value: unknown, session: ApplySession): SceneShape | undefined {
+  return typeof value === 'string' ? session.byHandle.get(value.trim().toUpperCase()) : undefined
+}
+
+const SIDES: PlacementSide[] = ['right', 'left', 'above', 'below', 'center', 'tip']
+
+function pickSide(value: unknown): PlacementSide | undefined {
+  return typeof value === 'string' && (SIDES as string[]).includes(value)
+    ? (value as PlacementSide)
+    : undefined
+}
+
+/**
+ * Create an arrow. When `from`/`to` name scene handles we create real tldraw
+ * *bindings*, so the arrow attaches to those shapes and follows them when
+ * they're moved — rather than being a floating line that merely looks
+ * connected.
+ */
+function createArrow(
+  editor: Editor,
+  op: Record<string, unknown>,
+  id: TLShapeId,
+  session: ApplySession,
+  color: TLDefaultColorStyle,
+): TLShapeId {
+  const from = resolveHandle(op.from, session)
+  const to = resolveHandle(op.to, session)
+
+  // Seed the terminals at the bound shapes' centres; the bindings then take
+  // over and tldraw routes the arrow to their edges.
+  const start = from ? centerOf(from.bounds) : { x: num(op.x1), y: num(op.y1) }
+  const end = to ? centerOf(to.bounds) : { x: num(op.x2), y: num(op.y2) }
+
+  editor.createShape({
+    id,
+    type: 'arrow',
+    x: 0,
+    y: 0,
+    props: { start, end, color, text: str(op.text) },
+  } as TLShapePartial)
+
+  if (from) bindArrow(editor, id, from.id, 'start')
+  if (to) bindArrow(editor, id, to.id, 'end')
+
+  return id
+}
+
+function bindArrow(
+  editor: Editor,
+  arrowId: TLShapeId,
+  targetId: string,
+  terminal: 'start' | 'end',
+): void {
+  editor.createBinding({
+    type: 'arrow',
+    fromId: arrowId,
+    toId: targetId as TLShapeId,
+    props: {
+      terminal,
+      normalizedAnchor: { x: 0.5, y: 0.5 },
+      isExact: false,
+      // Bind to the shape as a whole rather than a precise point, so tldraw
+      // picks a sensible edge crossing as the shapes move.
+      isPrecise: false,
+    },
+  } as Parameters<Editor['createBinding']>[0])
+}
+
+/** Rewrite an existing shape's text — "finish this label" rather than "add one". */
+function updateShapeText(editor: Editor, op: Record<string, unknown>, session: ApplySession): void {
+  const target = resolveHandle(op.target, session)
+  if (!target) return
+
+  editor.updateShape({
+    id: target.id as TLShapeId,
+    type: target.type,
+    props: { richText: toRichText(str(op.text)) },
+  } as TLShapePartial)
+}
+
 /** Place an image (from a public URL or a data: URL) on the board. */
-function createImage(editor: Editor, op: Record<string, unknown>, shapeId: TLShapeId): TLShapeId | null {
+function createImage(
+  editor: Editor,
+  op: Record<string, unknown>,
+  shapeId: TLShapeId,
+  session: ApplySession,
+): TLShapeId | null {
   const src = str(op.url)
   if (!src) return null
 
   const w = Math.max(1, num(op.w, 320))
   const h = Math.max(1, num(op.h, 240))
+  const at = place(op, session, w, h)
   const assetId = AssetRecordType.createId()
 
   editor.createAssets([
@@ -206,10 +395,11 @@ function createImage(editor: Editor, op: Record<string, unknown>, shapeId: TLSha
   editor.createShape({
     id: shapeId,
     type: 'image',
-    x: num(op.x),
-    y: num(op.y),
+    x: at.x,
+    y: at.y,
     props: { assetId, w, h },
   } as TLShapePartial)
+  registerCreated(session, shapeId, 'image', at.bounds)
 
   return shapeId
 }
