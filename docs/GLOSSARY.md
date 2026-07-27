@@ -9,6 +9,7 @@ behaviour in this app lives in how these concepts interact.
 
 - [Core domain terms](#core-domain-terms)
 - [AI collaboration terms](#ai-collaboration-terms)
+- [Spatial grounding terms](#spatial-grounding-terms) ← how the AI places things precisely
 - [Provider & transport terms](#provider--transport-terms)
 - [Invariants](#invariants) ← the rules that must not be broken
 - [Tunables](#tunables)
@@ -47,6 +48,29 @@ behaviour in this app lives in how these concepts interact.
 | **Compaction** | Only the last `MAX_HISTORY_MESSAGES` (8) turns go to the model; the full transcript stays in the UI. The window is never allowed to start on an assistant turn — the Anthropic API rejects that. |
 | **Auto turn** | A message with `auto: true` — sent by auto-watch rather than typed by the user. |
 | **Reasoning block** | `<think>…</think>` emitted by local reasoning models. Stripped by `ThinkFilter`. See the [implicit-open](#known-sharp-edges) sharp edge. |
+
+## Spatial grounding terms
+
+The vocabulary behind precise collaboration — "put a box at the end of *this*
+arrow". Read this before changing how the AI positions anything.
+
+**The core idea:** never ask the model for absolute coordinates. It sees a flat
+image with no coordinate frame, so estimating numbers is the least reliable
+thing it can do — while the app knows every shape's exact bounds. The model
+names *what* to place and *where relative to what*; the app does the arithmetic.
+
+| Term | Means |
+|---|---|
+| **Scene graph** | The board rendered as a numbered inventory for the prompt: every shape with a handle, kind, exact bounds and text. Replaces the old positionless list of strings. Built per turn in `boardScene.ts`, formatted in `sceneGraph.ts`. |
+| **Handle** | A per-turn label for a shape: `S1`, `S2`, … assigned in reading order (top-to-bottom, left-to-right within a row). **Not** a persistent id — regenerated every request and mapped back to real shape ids when applying a reply. |
+| **N-handle** | `N1`, `N2`, … — a shape *created by the current reply*, referenceable by later ops in the same batch. This is what lets one reply add a node and then connect an arrow to it, which "complete this flowchart" needs constantly. |
+| **Pointer** | The shape the user is working at: their selection if any, else the shape they most recently drew or edited (`useLastEditedShape`). Announced in the prompt as `USER POINTER`. This is what turns "finish this" into a precise instruction. |
+| **Anchor** | The handle a new shape is positioned relative to: `{"anchor":"S3","side":"right","gap":40}`. |
+| **Side** | Where relative to the anchor: `right`, `left`, `above`, `below`, `center`, `tip`. |
+| **Tip** | The arrowhead end of an arrow, plus its heading (the dominant axis of its vector). `side:"tip"` continues a flow from where the user's arrow points — the flagship case for this whole feature. Defaults to `gap: 0`, because a gap there would disconnect the flow exactly where precision matters. |
+| **Occupancy** | The bounds placement de-conflicts against: existing shapes *plus* shapes placed earlier in the same batch. **Arrows, lines and highlights are exempt** — a flowchart is mostly arrows, and treating connectors as blockers would shove every new shape away from where it belongs. |
+| **Arrow binding** | A real tldraw `arrow` binding created from `{"from":"S3","to":"S7"}`, so the arrow attaches to those shapes and follows them when moved — rather than being a floating line that merely looks connected. |
+| **Update op** | `{"op":"update","target":"S3","text":"…"}` — rewrites an existing shape's text ("finish this label") instead of adding a near-duplicate beside it. |
 
 ## Provider & transport terms
 
@@ -110,6 +134,24 @@ pinned by a test unless noted.
 11. **Custom overlays depend only on `Editor` + `store.listen`.** Not on
     tldraw's `track`/`useEditor`. *(Not test-pinned — enforced by review.)*
 
+12. **The scene passed to `applyBoardActions` must be the same one sent to the
+    model.** Handles are per-turn labels; resolving a reply against a
+    *different* scene would silently anchor to the wrong shapes.
+
+13. **Connectors never count as occupancy.** Arrows, lines and highlights are
+    excluded from collision avoidance. Including them pushes new shapes away
+    from arrow tips — precisely where the user asked for them.
+
+14. **`side: "tip"` defaults to `gap: 0`.** Any other default leaves a visible
+    disconnect at the one place the user is being most precise about.
+
+15. **The pointer is tracked with `source: 'user'`.** Otherwise the AI's own
+    drawing becomes the pointer, and the next turn anchors to the AI's last
+    output instead of the user's.
+
+16. **`useLastEditedShape` returns a ref, not state.** It fires on every pen
+    stroke; re-rendering the chat panel that often would stutter on an iPad.
+
 ---
 
 ## Tunables
@@ -148,10 +190,16 @@ src/
     llmClient.ts        provider-agnostic streaming (Anthropic SDK + OpenAI SSE)
     settingsStore.ts    provider config in localStorage (+ legacy key migration)
     boardContext.ts     board → text summary, board → snapshot, fingerprint
-    boardActions.ts     parse actions block → createShapes
+    boardActions.ts     parse actions block → shapes, bindings, updates
     thinkFilter.ts      strip <think> from local reasoning models
     useBoardWatcher.ts  debounced change trigger for auto-watch
     useVoiceInput.ts    Web Speech API mic input
+    — spatial grounding —
+    geometry.ts         Bounds/Point helpers (tldraw-free)
+    sceneGraph.ts       handles, reading order, arrow headings, prompt text (pure)
+    boardScene.ts       Editor → scene adapter (the only tldraw-aware part)
+    placement.ts        anchor+side → exact coordinates, with collision avoidance
+    useLastEditedShape.ts  tracks the user's pointer shape
   pwa.ts                service-worker registration + update polling
   ErrorBoundary.tsx     top-level crash guard
 claude-bridge/          headless Claude Code → OpenAI-compatible endpoint
@@ -190,3 +238,15 @@ these are *conceptual*.
 
 - **`npm run preview` ships a service worker** that can serve a stale bundle.
   Use `npm run dev` while iterating.
+
+- **The scene is built *before* the model replies.** If the user edits the board
+  while a reply streams, a handle can resolve to a moved — or deleted — shape.
+  Unknown handles fall back to absolute coordinates rather than failing, but a
+  long reply on a fast-changing board can still land slightly off.
+
+- **The scene costs tokens**: roughly 20–40 per shape, every turn. There is no
+  cap yet, so a very dense board will grow the prompt noticeably. If that bites,
+  prioritise shapes near the pointer and the viewport and truncate the rest.
+
+- **Handles renumber every turn.** S3 in one reply is not necessarily S3 in the
+  next. They must never be persisted or referenced across turns.

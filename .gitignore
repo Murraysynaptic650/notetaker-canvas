@@ -22,5 +22,10 @@ coverage/
 .env.local
 .env.*.local
 
+# The bridge's launch script holds a live subscription token. Only the
+# .example is tracked; a real one leaked here once and had to be scrubbed
+# from history, so keep it ignored.
+claude-bridge/start_command
+
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json

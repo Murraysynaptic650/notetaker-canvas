@@ -1,5 +1,9 @@
 # Notetaker Canvas
 
+[![CI](https://github.com/powerpratik/notetaker-canvas/actions/workflows/ci.yml/badge.svg)](https://github.com/powerpratik/notetaker-canvas/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Built with tldraw](https://img.shields.io/badge/built%20with-tldraw-black)](https://tldraw.dev)
+
 An infinite-canvas whiteboard (built on [tldraw](https://tldraw.dev)) for iPad and
 desktop, with an **AI study partner** that can see the board, chat about it, draw
 on it, listen to your voice, and run against multiple model backends — cloud
@@ -55,7 +59,15 @@ whatever text already arrived.
   JPEG, to bound tokens). Vision-capable models read handwriting/sketches.
 - **Draw on the board** — the model may append a ` ```tldraw ` JSON block of ops,
   which we apply via `createShapes` (marked as non-user edits so auto-watch
-  doesn't loop). Supported ops: `text`, `note`, `geo`, `arrow`, `line`, `image`.
+  doesn't loop). Ops: `text`, `note`, `geo`, `arrow`, `line`, `image`, `update`.
+- **Place things precisely** — the model gets a numbered inventory of every
+  shape with its exact bounds, and positions new ones *relative to them*
+  (`"anchor":"S3","side":"right"`) rather than guessing coordinates off the
+  snapshot. Draw an arrow and ask it to continue: `side:"tip"` starts exactly at
+  the arrowhead. Arrows given `"from"`/`"to"` are **bound** to their shapes, so
+  they stay attached when you move things. Placement avoids overlaps for you.
+- **Know where you're working** — whatever you have selected, or last drew,
+  is passed as the "pointer", so "finish this" means the right spot.
 - **Stream** replies token-by-token (or per-message for the Claude Code agent).
 - **Compact** — only the last few turns are sent to the model; the full
   transcript stays in the UI. Clear at any time with 🗑️.
@@ -134,10 +146,15 @@ src/
     llmClient.ts       provider-agnostic streaming (Anthropic SDK + OpenAI SSE)
     settingsStore.ts   provider config in localStorage
     boardContext.ts    board→text summary, board→image snapshot (+ downscale)
-    boardActions.ts    parse ```tldraw ops → createShapes (text/note/geo/arrow/line/image)
+    boardActions.ts    parse ```tldraw ops → shapes, arrow bindings, text updates
     thinkFilter.ts     strip <think>…</think> from local reasoning models
     useBoardWatcher.ts  debounced shape-change trigger for auto-watch
     useVoiceInput.ts    Web Speech API mic input
+    sceneGraph.ts      board→labelled inventory (S1, S2…) with exact bounds
+    boardScene.ts      tldraw→scene adapter; arrow tips and headings
+    placement.ts       anchor+side→exact coordinates, avoiding overlaps
+    geometry.ts        Bounds/Point helpers
+    useLastEditedShape.ts  tracks the shape the user last drew (the "pointer")
   pwa.ts         durable service-worker auto-update (polls for new builds)
 claude-bridge/   headless Claude Code → OpenAI-compatible endpoint (Node)
 docker-compose.yml   vLLM server for the local GPU model
@@ -208,3 +225,30 @@ npm run verify     # typecheck + lint + coverage
 npm test           # unit tests
 npm run lint       # eslint
 ```
+
+---
+
+## Security
+
+**Never commit credentials.** Model keys are entered in the app and live only in
+your browser's `localStorage` — they are never written to the repo. The bridge's
+token belongs in your environment: copy
+[`claude-bridge/start_command.example`](claude-bridge/start_command.example) to
+`start_command` (gitignored) or export the variable in your shell.
+
+If you find a security problem, please open an issue — or, for anything
+sensitive, contact the maintainer directly rather than filing publicly.
+
+## Contributing
+
+Issues and pull requests are welcome. Run `npm run verify` before opening a PR —
+CI runs the same gate (typecheck, lint, 80% coverage on the logic layer) plus a
+production build. See [`CLAUDE.md`](CLAUDE.md) for conventions and
+[`docs/GLOSSARY.md`](docs/GLOSSARY.md) for the vocabulary and invariants.
+
+## License
+
+[MIT](LICENSE) © Pratik Poudel
+
+Built on [tldraw](https://tldraw.dev), which carries its own license — review
+tldraw's terms before using this commercially.
