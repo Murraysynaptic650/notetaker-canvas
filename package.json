@@ -3,7 +3,31 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "iPad-optimized infinite-canvas whiteboard on tldraw, with multi-device sync, Files export, and MCP/AI collaboration.",
+  "description": "iPad-first infinite-canvas whiteboard on tldraw, with an AI study partner that sees the board, chats about it, and draws on it.",
+  "license": "MIT",
+  "author": "Pratik Poudel",
+  "homepage": "https://github.com/powerpratik/notetaker-canvas#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/powerpratik/notetaker-canvas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/powerpratik/notetaker-canvas/issues"
+  },
+  "keywords": [
+    "whiteboard",
+    "infinite-canvas",
+    "tldraw",
+    "ipad",
+    "apple-pencil",
+    "pwa",
+    "ai",
+    "llm",
+    "claude",
+    "vllm",
+    "handwriting",
+    "study-tool"
+  ],
   "scripts": {
     "dev": "vite",
     "dev:tunnel": "vite --mode tunnel",

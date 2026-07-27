@@ -1,0 +1,10 @@
+# Copy to `start_command`, paste your own token, then: sh start_command
+#
+# `start_command` is gitignored on purpose — it holds a live credential.
+# Get a token with `claude setup-token` (prints a CLAUDE_CODE_OAUTH_TOKEN),
+# or use ANTHROPIC_API_KEY instead to be billed per-token.
+#
+# Never commit the filled-in version. Prefer exporting the variable in your
+# shell profile or a secret manager over writing it to a file at all.
+
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-REPLACE_ME npm start
