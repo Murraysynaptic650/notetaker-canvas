@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="Three steps: you sketch on the board, the AI reads it including handwriting, and the AI draws its answer exactly where you pointed.">
+  <rect width="1200" height="420" rx="16" fill="#f7f7f8"/>
+
+  <!-- ============ panel 1: you sketch ============ -->
+  <g>
+    <rect x="28" y="28" width="352" height="300" rx="12" fill="#ffffff" stroke="#d8dade" stroke-width="1.5"/>
+    <text x="48" y="60" font-size="15" font-weight="700" fill="#1f2328">1 · You sketch</text>
+
+    <!-- hand-drawn-ish box -->
+    <path d="M78 108 L214 104 L218 172 L80 176 Z" fill="#eff6ff" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>
+    <text x="148" y="146" font-size="16" fill="#1f2328" text-anchor="middle">Cache</text>
+
+    <!-- arrow trailing off, drawn by the user -->
+    <path d="M222 140 C262 138, 288 140, 322 139" stroke="#1f2328" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M312 132 L324 139 L312 146" stroke="#1f2328" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- handwriting squiggle -->
+    <path d="M80 224 C96 214, 104 236, 120 226 C136 216, 144 238, 160 228 C172 220, 180 232, 192 226" stroke="#6b7280" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M80 252 C92 244, 100 260, 114 252 C126 245, 132 258, 146 251" stroke="#6b7280" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <text x="80" y="292" font-size="12.5" fill="#6b7280">handwriting, shapes, anything</text>
+
+    <text x="204" y="292" font-size="12.5" fill="#9ca3af" text-anchor="start">“what goes here?”</text>
+  </g>
+
+  <!-- arrow between panels -->
+  <path d="M392 178 L432 178" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M424 170 L434 178 L424 186" stroke="#9ca3af" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- ============ panel 2: it reads the board ============ -->
+  <g>
+    <rect x="448" y="28" width="304" height="300" rx="12" fill="#ffffff" stroke="#d8dade" stroke-width="1.5"/>
+    <text x="468" y="60" font-size="15" font-weight="700" fill="#1f2328">2 · It reads the board</text>
+
+    <!-- snapshot chip -->
+    <rect x="468" y="80" width="264" height="52" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
+    <text x="484" y="103" font-size="12.5" font-weight="600" fill="#1f2328">📷 snapshot</text>
+    <text x="484" y="121" font-size="11.5" fill="#6b7280">reads your handwriting, not just typed text</text>
+
+    <!-- scene graph chip -->
+    <rect x="468" y="144" width="264" height="106" rx="8" fill="#f9fafb" stroke="#e5e7eb"/>
+    <text x="484" y="167" font-size="12.5" font-weight="600" fill="#1f2328">📐 exact geometry</text>
+    <text x="484" y="188" font-size="11" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#2563eb">S1 rect (200,200)-(380,290) "Cache"</text>
+    <text x="484" y="206" font-size="11" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#2563eb">S2 arrow → tip (520,245)</text>
+    <text x="484" y="232" font-size="11.5" fill="#6b7280">so it knows exactly where you pointed</text>
+  </g>
+
+  <!-- arrow between panels -->
+  <path d="M764 178 L804 178" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M796 170 L806 178 L796 186" stroke="#9ca3af" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- ============ panel 3: it draws back ============ -->
+  <g>
+    <rect x="820" y="28" width="352" height="300" rx="12" fill="#ffffff" stroke="#d8dade" stroke-width="1.5"/>
+    <text x="840" y="60" font-size="15" font-weight="700" fill="#1f2328">3 · It draws the answer back</text>
+
+    <path d="M862 108 L964 104 L968 172 L864 176 Z" fill="#eff6ff" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>
+    <text x="914" y="146" font-size="15" fill="#1f2328" text-anchor="middle">Cache</text>
+
+    <path d="M972 140 L1024 139" stroke="#1f2328" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M1014 132 L1026 139 L1014 146" stroke="#1f2328" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- the AI-added shape, landing exactly at the arrow tip -->
+    <rect x="1030" y="106" width="116" height="68" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="2.5" stroke-dasharray="6 4"/>
+    <text x="1088" y="146" font-size="15" fill="#065f46" text-anchor="middle">Database</text>
+
+    <circle cx="1030" cy="140" r="4.5" fill="#10b981"/>
+    <text x="1030" y="200" font-size="11.5" fill="#10b981" font-weight="600" text-anchor="middle">placed at your arrow’s tip</text>
+
+    <text x="862" y="240" font-size="12.5" fill="#6b7280">Not “somewhere nearby” — the app computes</text>
+    <text x="862" y="258" font-size="12.5" fill="#6b7280">the coordinates, so placement is exact.</text>
+    <text x="862" y="292" font-size="12.5" fill="#6b7280">Arrows it draws stay <tspan font-weight="600" fill="#1f2328">attached</tspan> when you move things.</text>
+  </g>
+
+  <!-- ============ footer: runs anywhere ============ -->
+  <g>
+    <text x="28" y="368" font-size="13" font-weight="700" fill="#1f2328">Runs in any modern browser</text>
+    <text x="230" y="368" font-size="13" fill="#6b7280">laptop · tablet · phone — installable as a PWA, works offline</text>
+
+    <text x="28" y="396" font-size="13" font-weight="700" fill="#1f2328">Bring your own model</text>
+    <text x="230" y="396" font-size="13" fill="#6b7280">Claude · Gemini · a local GPU model (vLLM/Ollama) · headless Claude Code</text>
+  </g>
+</svg>

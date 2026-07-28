@@ -5,6 +5,13 @@
     "module": "ESNext",
     "skipLibCheck": true,
 
+    // vite.config.ts uses Node globals (process.env, console), so the Node
+    // types must be declared, not inherited. Naming them explicitly also stops
+    // TypeScript's automatic @types discovery — which walks *up* the directory
+    // tree — from silently satisfying this from a stray node_modules in a
+    // parent or home directory. That made CI fail while local passed.
+    "types": ["node"],
+
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
