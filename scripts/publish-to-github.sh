@@ -82,6 +82,31 @@ else
   die "refusing to push"
 fi
 
+# --------------------------------------------------------- network identifiers
+#
+# Not credentials, so these warn rather than block — but a real Tailscale or LAN
+# address in a public repo maps your private network for anyone reading, and
+# LLM_TARGET makes it easy to paste one in by accident. Documentation uses
+# 100.x.x.x placeholders precisely so this stays quiet.
+
+say "Network identifiers (advisory)"
+
+TAILSCALE_IP='\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b'
+PRIVATE_IP='\b(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3})\b'
+# A fully-qualified tailnet host (machine + tailnet + the suffix), not the bare
+# wildcard suffix that vite.config.ts allows in `allowedHosts`. Written without
+# a literal example so this line doesn't match its own pattern.
+TAILNET_HOST='[a-z0-9-]+\.[a-z0-9-]+\.ts\.net'
+
+if git grep -nIE "$TAILSCALE_IP|$PRIVATE_IP|$TAILNET_HOST" -- . >/dev/null 2>&1; then
+  bad "a private network address appears in tracked files:"
+  git grep -nIE "$TAILSCALE_IP|$PRIVATE_IP|$TAILNET_HOST" -- . | sed 's/^/        /'
+  printf '\n    Replace it with a placeholder (100.x.x.x) and pass the real value\n'
+  printf '    via LLM_TARGET at runtime instead.\n'
+else
+  ok "no private IPs or tailnet hostnames in tracked files"
+fi
+
 # ------------------------------------------------------------------ checks
 
 say "Repo hygiene"

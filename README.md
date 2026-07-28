@@ -133,6 +133,99 @@ Env: `CLAUDE_BRIDGE_PORT` (8790), `CLAUDE_BRIDGE_MODEL` (sonnet),
 
 ---
 
+## Configuration
+
+Nothing here is required to run the app against a cloud provider — `npm run dev`
+plus a key pasted into ⚙️ is enough. The variables matter once you point it at
+your own hardware.
+
+**Dev server** (read by `vite.config.ts` at startup):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `LLM_TARGET` | `http://127.0.0.1:8000` | Where `/llm` is relayed to — your vLLM/Ollama host, typically a Tailscale address |
+| `CLAUDE_BRIDGE_TARGET` | `http://127.0.0.1:8790` | Where `/agent` is relayed to |
+
+**Bridge** (`claude-bridge/`, read by `server.mjs`):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | — | **Secret.** From `claude setup-token`. Never commit it |
+| `CLAUDE_BRIDGE_PORT` | `8790` | Bridge listen port |
+| `CLAUDE_BRIDGE_MODEL` | `sonnet` | Model the headless agent runs |
+| `MAX_THINKING_TOKENS` | `8000` | Lower = faster replies |
+
+**In-app** (⚙️, stored in that browser's `localStorage` under
+`notetaker-ai-settings`): provider, model, base URL, API key. Per-browser and
+per-device — never sent anywhere but the provider you selected, never written
+to the repo.
+
+**vLLM** — see [`docker-compose.yml`](./docker-compose.yml). Note that
+`NVIDIA_VISIBLE_DEVICES` pins a **specific MIG slice UUID from the author's
+machine**; change it to your own GPU or slice, or the container won't start.
+
+---
+
+## Network exposure — what listens, and what it relays
+
+Worth understanding before you run this on a network you don't control.
+
+```
+    iPad / any device on your Wi-Fi
+                │
+                │  http://<mac-ip>:5173        ← no auth
+                ▼
+    ┌───────────────────────────────┐
+    │  Vite dev server (your Mac)   │   server.host = true
+    │  binds 0.0.0.0:5173           │   → LAN + Tailscale, not just localhost
+    └───────────┬───────────┬───────┘
+                │           │
+        /llm    │           │   /agent
+                ▼           ▼
+        vLLM on GPU box   claude-bridge :8790
+        (Tailscale)       (Bash/Read/Write on your Mac)
+```
+
+**The dev server binds to every interface.** `server.host: true` is what lets
+the iPad reach it — and equally lets anyone else on the same Wi-Fi reach it.
+
+**The two proxies are unauthenticated open relays.** They exist for a good
+reason: the iPad is on your LAN, the GPU box is on your tailnet, and only the
+Mac can route to both, so the browser calls same-origin `/llm/v1` and Vite
+forwards it. Same-origin also sidesteps CORS, mixed content, and service-worker
+issues. But it means anyone who can reach port 5173 can:
+
+- **use your GPU** through `/llm`, and
+- **reach the Claude Code bridge** through `/agent` — which runs a headless
+  agent with **Bash, Read and Write** in `claude-bridge/workspace`, on your
+  token.
+
+That second one is the one to take seriously. Treat "can reach :5173" as
+"can run commands on my Mac".
+
+Consequently:
+
+- **Only run the dev server on networks you trust.** Home Wi-Fi, fine. Café,
+  conference, campus — don't, or don't start the bridge.
+- **Don't start the bridge unless you're using it.** No bridge process, no
+  `/agent` relay. It's the highest-value target here by far.
+- **Tunnels make this public.** `vite.config.ts` allows `.trycloudflare.com`,
+  `.ngrok-free.app`, `.ngrok.io` and `.ts.net` hosts, so `npm run tunnel` puts
+  the app — *and both proxies* — on the open internet behind nothing but an
+  unguessable URL. A quick-tunnel URL is not a secret; treat it as one anyway
+  and shut the tunnel down when you're done. Never tunnel with the bridge running.
+- **vLLM listens on `0.0.0.0:8000` with `--allowed-origins '["*"]'`.** Keep that
+  box on the tailnet and off any public interface; the wide-open CORS assumes
+  nothing untrusted can route to it.
+- **The proxies are dev-only.** `vite build` does not include them, so the
+  production PWA has no `/llm` or `/agent` route. A deployed build can only talk
+  to a provider the user configures in their own browser.
+
+Your Tailscale and LAN addresses are supplied at runtime through `LLM_TARGET`,
+never committed — the repo only ever refers to them as `100.x.x.x`.
+
+---
+
 ## Architecture
 
 ```
@@ -226,6 +319,35 @@ npm test           # unit tests
 npm run lint       # eslint
 ```
 
+### Publishing to GitHub
+
+[`scripts/publish-to-github.sh`](scripts/publish-to-github.sh) audits for
+leaked credentials, then creates the repo and pushes.
+
+```bash
+DRY_RUN=1 bash scripts/publish-to-github.sh    # audit only, push nothing
+bash scripts/publish-to-github.sh              # create + push
+VISIBILITY=private bash scripts/publish-to-github.sh
+```
+
+It scans the **full commit history**, not just the working tree — a token in an
+old commit is still a leaked token once the repo is public — and refuses to push
+if it finds one, or if `claude-bridge/start_command` has stopped being ignored.
+
+Authenticate with `gh auth login` (stores the token in the system keychain).
+**Never embed a token in the remote URL** — `https://TOKEN@github.com/...` writes
+it in cleartext to `.git/config`, where `git remote -v` and any screenshot will
+happily reveal it. If you use a PAT, pipe it in instead:
+
+```bash
+gh auth login --with-token < ~/.config/gh-token     # or: export GH_TOKEN=...
+```
+
+A fine-grained PAT needs **Contents: read & write** on the repo, plus
+**Administration: write** if you want the script to create it. A classic PAT
+pushing this repo also needs the **`workflow`** scope, because it contains
+`.github/workflows/ci.yml` — GitHub rejects workflow changes without it.
+
 ---
 
 ## Security
@@ -235,6 +357,15 @@ your browser's `localStorage` — they are never written to the repo. The bridge
 token belongs in your environment: copy
 [`claude-bridge/start_command.example`](claude-bridge/start_command.example) to
 `start_command` (gitignored) or export the variable in your shell.
+
+**The dev server and its proxies are the real exposure**, not the repo — see
+[Network exposure](#network-exposure--what-listens-and-what-it-relays). In
+short: `:5173` is unauthenticated, binds to every interface, and relays to the
+Claude Code bridge, which can run commands on your Mac. Trusted networks only,
+and don't leave the bridge running.
+
+If a credential is ever committed, purging it from history is not enough —
+**rotate it**. Assume anything that reached a commit is compromised.
 
 If you find a security problem, please open an issue — or, for anything
 sensitive, contact the maintainer directly rather than filing publicly.
