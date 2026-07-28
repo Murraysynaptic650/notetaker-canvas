@@ -4,13 +4,40 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Built with tldraw](https://img.shields.io/badge/built%20with-tldraw-black)](https://tldraw.dev)
 
-An infinite-canvas whiteboard (built on [tldraw](https://tldraw.dev)) for iPad and
-desktop, with an **AI study partner** that can see the board, chat about it, draw
-on it, listen to your voice, and run against multiple model backends — cloud
-(Anthropic, Gemini), a local GPU model (vLLM/Ollama), or a headless Claude Code
-agent on your Mac.
+**An infinite whiteboard where the AI can read your handwriting and draw its
+answer back — exactly where you point.**
 
-Installable as a PWA. Board state persists locally (IndexedDB) and works offline.
+Sketch a flowchart, draw an arrow off the end of it, and ask "what goes here?"
+The answer lands at the tip of *that* arrow, not somewhere nearby. Built on
+[tldraw](https://tldraw.dev).
+
+It runs in **any modern browser** — laptop, tablet or phone — and installs as a
+PWA. There's no backend and no account: your board is stored in the browser
+(IndexedDB) and the canvas keeps working offline. Bring your own model: Claude,
+Gemini, a local GPU model via vLLM/Ollama, or a headless Claude Code agent on
+your own machine.
+
+The only data that leaves your device is what you send to the model you chose —
+a snapshot of the board plus your message, on each turn. Point it at a local
+model and nothing leaves your network at all.
+
+<img src="docs/how-it-works.svg" alt="Three steps: you sketch a box and an arrow; the AI reads the board including handwriting and its exact geometry; the AI draws the answer at the arrow's tip" width="100%">
+
+<!-- TODO — replace the diagram above with a real screen recording.
+     This is the single highest-leverage change to the whole repo: the diagram
+     explains the idea, but a 10-15s clip of the AI *drawing onto your board*
+     proves it, and that is what people share.
+
+     Capture: iPad Control Centre → Screen Recording (or QuickTime → New Screen
+     Recording on the Mac). Sketch a box, draw an arrow off it, ask "what goes
+     here?", let the answer land. Trim to the moment it draws.
+     GitHub renders .gif and .mp4 inline — put it in docs/ and swap the <img>
+     above for it, keeping the diagram lower down in the README. -->
+
+
+There's extra polish for tablets — Apple Pencil support with palm rejection, a
+pencil-only toggle, touch-tuned snapping — but none of it is required. A laptop
+and a mouse work fine.
 
 > **Working on the code?** [`docs/GLOSSARY.md`](docs/GLOSSARY.md) defines the
 > project's vocabulary and the invariants the AI features depend on;
@@ -22,19 +49,39 @@ Installable as a PWA. Board state persists locally (IndexedDB) and works offline
 
 ```bash
 npm install
-npm run dev              # http://localhost:5173  (use this while iterating)
+npm run dev              # http://localhost:5173
 ```
 
-To use it on the **iPad** (same Wi-Fi), the dev server listens on the LAN:
-open `http://<mac-ip>:5173`. Use **`npm run dev`, not `preview`**, while
-developing — `preview` ships a service worker that can serve stale bundles.
+Open it, click ⚙️, paste an API key, and start drawing. That's the whole setup
+for the cloud providers — no account, no backend, no config file.
 
-Build / preview the production PWA:
+**Use it from your other devices.** The dev server listens on your whole
+network, so anything on the same Wi-Fi — iPad, phone, another laptop — can open
+`http://<your-machine-ip>:5173` and get the same app. On iOS/iPadOS, *Share →
+Add to Home Screen* installs it as a standalone app.
+
+Use **`npm run dev`, not `preview`**, while developing — `preview` ships a
+service worker that can serve stale bundles.
+
+### Host it anywhere (optional)
+
+It's a static site with no server of its own, so any static host works:
 
 ```bash
-npm run build
-npm run preview          # http://localhost:4173 (with service worker)
+npm run build            # → dist/
+npm run preview          # http://localhost:4173, with the service worker
 ```
+
+Drop `dist/` on Vercel, Netlify, GitHub Pages, or your own box, and the
+whiteboard is reachable from any device, anywhere — each person supplies their
+own API key in their own browser, so hosting it costs you nothing and exposes
+none of your credentials.
+
+> One limitation to know: the `/llm` and `/agent` relays are **dev-server
+> features**, so a hosted build can reach the cloud providers (Claude, Gemini)
+> but not a local GPU model or the Claude Code bridge. Those need
+> `npm run dev` on the machine that can route to them. See
+> [Network exposure](#network-exposure--what-listens-and-what-it-relays).
 
 ---
 

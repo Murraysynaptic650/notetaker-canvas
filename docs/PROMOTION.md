@@ -106,5 +106,141 @@ three people who file a real issue or use it daily — that's the signal worth
 optimising for.
 
 The honest differentiator isn't "AI whiteboard" (crowded). It's **"AI that draws
-back onto an infinite canvas, running against a model on your own GPU, on an
-iPad."** Every post should lead with that sentence.
+back onto an infinite canvas, exactly where you point, running against a model
+on your own GPU."** Every post should lead with that sentence.
+
+---
+
+## 5. Ready-to-post copy
+
+Drafts, not scripts — rewrite them in your own voice before posting. Anything
+that reads as copy-paste marketing gets downvoted on Reddit and ignored on
+LinkedIn.
+
+**Two rules that matter more than the wording:**
+
+1. **Post the clip, not the repo.** Every one of these assumes a GIF/video of
+   the AI drawing onto the board. Without it, halve your expectations.
+2. **Disclose that you built it.** "I built" / "my project" in the first line.
+   Reddit is unforgiving about undisclosed self-promotion, and most subs have a
+   rule requiring it.
+
+### Reddit
+
+Read each sub's rules before posting — several require a flair, restrict
+self-promo to specific days, or enforce a ratio of participation to promotion.
+Space posts a few days apart; the same link across five subs in one hour reads
+as spam and can get you site-wide filtered.
+
+**r/SideProject / r/opensource** — the friendliest starting point.
+
+> **Title:** I built an infinite whiteboard where the AI draws its answer back onto the canvas
+>
+> I kept sketching diagrams and then re-typing them into a chat box to ask about
+> them. So I built the thing I wanted: a whiteboard where the model sees the
+> board itself — handwriting included — and answers by drawing on it.
+>
+> The part that took longest was making placement *precise*. Asking a vision
+> model for coordinates off a flat screenshot doesn't work; it guesses. So the
+> model gets a labelled inventory of every shape with its exact bounds, and says
+> "put a box at the tip of S2" — the app does the arithmetic. Draw an arrow, ask
+> "what goes here?", and the answer lands at the arrowhead.
+>
+> Runs in any browser, installs as a PWA, board stays local. Bring your own key
+> (Claude/Gemini), or point it at a local model on your own GPU.
+>
+> MIT, no account, no backend: <link>. Happy to answer anything.
+
+**r/LocalLLaMA** — lead with the local-model angle; this crowd wants specifics.
+
+> **Title:** A whiteboard front-end for your local vision model — it reads handwriting and draws back onto the canvas
+>
+> I wanted my local model to be useful for *studying*, not just chat. This is an
+> infinite canvas that screenshots itself to the model each turn, so a vision
+> model can read handwriting and sketches, then reply by drawing shapes onto the
+> board.
+>
+> Local-model notes, since that's the interesting bit here:
+> - OpenAI-compatible, so vLLM or Ollama works. `docker-compose.yml` included
+>   (Qwen2.5-VL-7B-AWQ on a MIG slice).
+> - Reasoning models emit `<think>`, sometimes with only the *closing* tag
+>   because the chat template opens it. There's a filter for that.
+> - Snapshots are capped at 1280px/JPEG to bound vision tokens — raise it for
+>   better handwriting OCR at the cost of context.
+> - The browser can't reach a Tailscale-only GPU box from an iPad, so the dev
+>   server relays same-origin `/llm/v1` to it. No CORS, no mixed content.
+>
+> <link> — MIT. Curious what other people's local vision models make of
+> handwriting; mine are hit-or-miss below 7B.
+
+**r/ipad, r/GoodNotes, r/Notability** — no jargon at all. These are users.
+
+> **Title:** I made a free whiteboard app where the AI can read your handwriting and draw on the page with you
+>
+> I got tired of note apps where the "AI" just summarises typed text. This one
+> can actually see the page — handwriting, arrows, sketches — and answers by
+> drawing onto it.
+>
+> The bit I use most: draw an arrow to an empty spot and ask what goes there.
+> It fills in that exact spot.
+>
+> Works in Safari and installs to the Home Screen like a normal app. Apple
+> Pencil with palm rejection. Free and open-source; you supply your own API key.
+>
+> <link>
+
+### LinkedIn
+
+Different game: no link in the first two lines (the feed suppresses posts with
+early links — put it in the first comment), short paragraphs, and a point that
+isn't "look at my project".
+
+> Most "AI + notes" features summarise text you already typed.
+>
+> I wanted the opposite: an AI that works on the page *with* you. So I built an
+> infinite whiteboard where the model sees the board as an image — handwriting
+> and all — and replies by drawing on it.
+>
+> The hard part wasn't the model. It was placement.
+>
+> If you ask a vision model to put a shape at specific coordinates, it guesses,
+> because it's reading a flat image with no coordinate frame. Results land
+> "somewhere near" where you wanted. That's the difference between a demo and
+> something you'd actually use.
+>
+> The fix was to stop asking. The model now receives a labelled inventory of
+> every shape with its exact geometry, and positions things *relative* to them —
+> "a box at the tip of that arrow." The app computes the coordinates. Draw an
+> arrow, ask what goes next, and the answer lands at the arrowhead.
+>
+> A few things I'd do the same way again:
+> → Bring-your-own-key. No accounts, no backend, nothing to host.
+> → Runs against a local model on your own GPU if you'd rather nothing leave
+>   your network.
+> → Board data stays in the browser.
+>
+> Open-source (MIT). Link in the comments — I'd genuinely like feedback on the
+> placement approach, which I suspect generalises beyond whiteboards.
+
+### Hacker News
+
+Covered in §2, but the first comment matters more than the post. Lead with the
+thing an HN reader will actually argue about: *why absolute coordinates from a
+vision model don't work, and what replaced them.* Mention the `<think>`
+implicit-open case and the same-origin relay for Tailscale — both are concrete,
+both invite the "actually, you could…" replies that keep a thread alive.
+
+### After posting
+
+- Answer every top-level comment for the first 6 hours. Response rate drives
+  ranking on Reddit far more than upvote count.
+- Expect "why not just use Excalidraw/tldraw/FigJam?" — have a one-line answer
+  ready: *those are canvases; this is a canvas the model can read and draw on.*
+- Expect "is my data going anywhere?" — no backend, keys in localStorage, board
+  in IndexedDB. Say it plainly, and **don't overclaim**: a board snapshot does
+  go to whichever provider the user picked, on every turn. Volunteer that
+  before someone else points it out, and note that a local model keeps it on
+  their own network. Getting caught overstating privacy is unrecoverable with
+  this audience.
+- Expect the tldraw licensing question. Answer it honestly (§1) rather than
+  deflecting; getting caught hedging costs more than the constraint does.
