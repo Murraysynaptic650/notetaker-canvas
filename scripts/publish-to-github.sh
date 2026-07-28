@@ -183,4 +183,4 @@ say "Done — https://github.com/$owner/$REPO_NAME"
 printf '\nNext:\n'
 printf '  - Add a screenshot or GIF to the README (biggest single conversion lever).\n'
 printf '  - Deploy a live demo and link it at the top.\n'
-printf '  - See docs/PROMOTION.md for the launch plan.\n\n'
+printf '\n'

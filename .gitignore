@@ -29,3 +29,7 @@ claude-bridge/start_command
 
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
+
+# Personal launch/marketing notes — local reference only, not part of the
+# project. Kept out of the repo so the public README stays the product docs.
+docs/PROMOTION.md
