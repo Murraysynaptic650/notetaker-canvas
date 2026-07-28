@@ -122,11 +122,21 @@ claude setup-token                          # once — prints CLAUDE_CODE_OAUTH_
 cd claude-bridge && npm install
 CLAUDE_CODE_OAUTH_TOKEN=... npm start        # listens on :8790, model = sonnet
 ```
-The dev server proxies `/agent` → `http://localhost:8790`, so just pick
-**Provider → Claude Code (agent)** in the app (no URL/key needed).
+
+Then start the dev server **with the relay explicitly enabled** — it is off by
+default, so a bridge you left running can't be reached by accident:
+
+```bash
+ENABLE_AGENT_PROXY=1 npm run dev
+```
+
+Now pick **Provider → Claude Code (agent)** in the app (no URL/key needed).
+Without the flag, `/agent` answers `503` and the chat says the relay is
+disabled; the dev server prints a warning when you *do* enable it.
 
 > **Personal, single-user use only** — your own token on your own machine. Do not
-> expose the bridge as a shared service.
+> expose the bridge as a shared service. Anyone who can reach the dev server
+> while the relay is on can run commands on this machine.
 
 Env: `CLAUDE_BRIDGE_PORT` (8790), `CLAUDE_BRIDGE_MODEL` (sonnet),
 `MAX_THINKING_TOKENS` (8000 → medium effort for faster replies).
@@ -144,7 +154,8 @@ your own hardware.
 | Variable | Default | What it does |
 |---|---|---|
 | `LLM_TARGET` | `http://127.0.0.1:8000` | Where `/llm` is relayed to — your vLLM/Ollama host, typically a Tailscale address |
-| `CLAUDE_BRIDGE_TARGET` | `http://127.0.0.1:8790` | Where `/agent` is relayed to |
+| `ENABLE_AGENT_PROXY` | *(unset — off)* | Set to `1` to enable the `/agent` relay. **Off by default**: it reaches an agent that can run commands on this machine |
+| `CLAUDE_BRIDGE_TARGET` | `http://127.0.0.1:8790` | Where `/agent` is relayed to, when enabled |
 
 **Bridge** (`claude-bridge/`, read by `server.mjs`):
 
@@ -189,31 +200,33 @@ Worth understanding before you run this on a network you don't control.
 **The dev server binds to every interface.** `server.host: true` is what lets
 the iPad reach it — and equally lets anyone else on the same Wi-Fi reach it.
 
-**The two proxies are unauthenticated open relays.** They exist for a good
-reason: the iPad is on your LAN, the GPU box is on your tailnet, and only the
-Mac can route to both, so the browser calls same-origin `/llm/v1` and Vite
-forwards it. Same-origin also sidesteps CORS, mixed content, and service-worker
-issues. But it means anyone who can reach port 5173 can:
+**The proxies are unauthenticated relays.** They exist for a good reason: the
+iPad is on your LAN, the GPU box is on your tailnet, and only the Mac can route
+to both, so the browser calls same-origin `/llm/v1` and Vite forwards it.
+Same-origin also sidesteps CORS, mixed content, and service-worker issues. But
+it means anyone who can reach port 5173 can:
 
-- **use your GPU** through `/llm`, and
+- **use your GPU** through `/llm` — always on, and
 - **reach the Claude Code bridge** through `/agent` — which runs a headless
   agent with **Bash, Read and Write** in `claude-bridge/workspace`, on your
-  token.
+  token. **Off unless you set `ENABLE_AGENT_PROXY=1`.**
 
-That second one is the one to take seriously. Treat "can reach :5173" as
+That second one is why it's opt-in. While it's on, treat "can reach :5173" as
 "can run commands on my Mac".
 
 Consequently:
 
 - **Only run the dev server on networks you trust.** Home Wi-Fi, fine. Café,
-  conference, campus — don't, or don't start the bridge.
-- **Don't start the bridge unless you're using it.** No bridge process, no
-  `/agent` relay. It's the highest-value target here by far.
+  conference, campus — don't, or at least leave `/agent` off.
+- **Enable `/agent` per session, not in your shell profile.** The whole point of
+  the default is that a bridge you forgot about isn't reachable. Exporting the
+  variable permanently gives that back.
 - **Tunnels make this public.** `vite.config.ts` allows `.trycloudflare.com`,
   `.ngrok-free.app`, `.ngrok.io` and `.ts.net` hosts, so `npm run tunnel` puts
-  the app — *and both proxies* — on the open internet behind nothing but an
-  unguessable URL. A quick-tunnel URL is not a secret; treat it as one anyway
-  and shut the tunnel down when you're done. Never tunnel with the bridge running.
+  the app — *and whichever proxies are live* — on the open internet behind
+  nothing but an unguessable URL. A quick-tunnel URL is not a secret; treat it
+  as one anyway and shut the tunnel down when you're done. **Never combine a
+  tunnel with `ENABLE_AGENT_PROXY=1`.**
 - **vLLM listens on `0.0.0.0:8000` with `--allowed-origins '["*"]'`.** Keep that
   box on the tailnet and off any public interface; the wide-open CORS assumes
   nothing untrusted can route to it.

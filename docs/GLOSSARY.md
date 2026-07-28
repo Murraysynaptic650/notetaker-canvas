@@ -82,7 +82,8 @@ names *what* to place and *where relative to what*; the app does the arithmetic.
 | `openai` | Any OpenAI-compatible `/v1` endpoint — vLLM or Ollama on a GPU box. Needs a base URL + model; key optional. **The only provider that gets `ThinkFilter`.** |
 | `claudecode` | The local Claude Code bridge. Needs nothing in-app: auth and model live on the bridge. |
 | **Bridge** | `claude-bridge/server.mjs` — headless Claude Code wrapped in an OpenAI-compatible endpoint on `:8790`, with Bash/Read/Write in `claude-bridge/workspace`. Lets the chat run real computation on the Mac while still seeing the board. **Personal single-user use only** — it's your own token on your own machine; never expose it as a shared service. |
-| **Relay / proxy** | The Vite dev server forwarding same-origin paths to hosts the browser can't reach: `/llm` → `LLM_TARGET` (vLLM), `/agent` → the bridge. Same-origin means no CORS, no mixed content, and no service-worker cross-origin trouble. |
+| **Relay / proxy** | The Vite dev server forwarding same-origin paths to hosts the browser can't reach: `/llm` → `LLM_TARGET` (vLLM), `/agent` → the bridge. Same-origin means no CORS, no mixed content, and no service-worker cross-origin trouble. Dev-only — `vite build` includes neither. |
+| **Opt-in relay** | `/agent` is registered **only** when `ENABLE_AGENT_PROXY=1`. Off, the path answers 503 with an explanatory body; on, the dev server prints a warning at startup. `/llm` has no such gate — it can cost GPU time but cannot execute code. |
 | **Why the relay exists** | The iPad is on the LAN but the GPU box is on Tailscale. The iPad can't route there; the Mac can. So the app calls `/llm/v1` and the Mac relays. This is also why the dev server binds to all interfaces. |
 
 ---
@@ -151,6 +152,14 @@ pinned by a test unless noted.
 
 16. **`useLastEditedShape` returns a ref, not state.** It fires on every pen
     stroke; re-rendering the chat panel that often would stutter on an iPad.
+
+17. **The `/agent` relay stays off by default.** The dev server binds every
+    interface, so an always-on relay to an agent with shell access means
+    anyone who can reach port 5173 can run commands on the machine. It is
+    registered only under `ENABLE_AGENT_PROXY=1`, and enabling it prints a
+    warning. Don't "simplify" this back to an unconditional proxy, and don't
+    export the variable globally — per-session is the point.
+    *(Not test-pinned — verified by booting the dev server both ways.)*
 
 ---
 

@@ -1,13 +1,69 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+/**
+ * The `/agent` relay is OPT-IN, and deliberately so.
+ *
+ * It forwards, unauthenticated, to the Claude Code bridge — a headless agent
+ * with Bash/Read/Write on this machine. Because the dev server binds every
+ * interface (`server.host: true`, needed for the iPad), an always-on relay
+ * would mean anyone who can reach port 5173 can run commands here. That is a
+ * bad default for a bridge you forgot was running.
+ *
+ * So: no env var, no relay. Enable it for the session you actually want it:
+ *
+ *     ENABLE_AGENT_PROXY=1 npm run dev
+ *
+ * `/llm` stays on by default — it relays to a model server, which can cost you
+ * GPU time but cannot execute code.
+ */
+const AGENT_PROXY_ENABLED = process.env.ENABLE_AGENT_PROXY === '1'
+
+/**
+ * When the relay is off, answer `/agent` with an explicit 503 rather than
+ * letting the request fall through to the SPA — otherwise the app receives
+ * HTML where it expects JSON and reports a confusing parse error instead of
+ * the real reason.
+ */
+function agentProxyDisabledNotice(): Plugin {
+  return {
+    name: 'notetaker:agent-proxy-disabled',
+    configureServer(server) {
+      server.middlewares.use('/agent', (_request, response) => {
+        response.statusCode = 503
+        response.setHeader('Content-Type', 'application/json')
+        response.end(
+          JSON.stringify({
+            error: {
+              message:
+                'The /agent relay is disabled. Restart the dev server with ENABLE_AGENT_PROXY=1 to use the Claude Code bridge.',
+            },
+          }),
+        )
+      })
+    },
+  }
+}
 
 // https://vite.dev/config/
 // Run `vite --mode tunnel` (npm run dev:tunnel) when serving the iPad through
 // an HTTPS tunnel; plain `vite` stays tuned for localhost on the Mac.
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  if (AGENT_PROXY_ENABLED) {
+    // Loud on purpose: this is the one setting that lets a network peer reach
+    // an agent with shell access on this machine.
+    console.warn(
+      '\n\x1b[33m⚠  /agent relay ENABLED\x1b[0m — anyone who can reach this dev server can use\n' +
+        '   the Claude Code bridge (Bash/Read/Write on this machine). Trusted networks only,\n' +
+        '   and do not expose it through a tunnel.\n',
+    )
+  }
+
+  return {
   plugins: [
     react(),
+    ...(AGENT_PROXY_ENABLED ? [] : [agentProxyDisabledNotice()]),
     VitePWA({
       registerType: 'autoUpdate',
       // We register the worker ourselves in src/pwa.ts (with update polling),
@@ -67,12 +123,18 @@ export default defineConfig(({ mode }) => ({
         rewrite: (path) => path.replace(/^\/llm/, ''),
       },
       // The Claude Code bridge (claude-bridge/server.mjs) runs on this Mac and
-      // answers general/agent questions. Same relay trick so the iPad can use it.
-      '/agent': {
-        target: process.env.CLAUDE_BRIDGE_TARGET || 'http://127.0.0.1:8790',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/agent/, ''),
-      },
+      // answers general/agent questions. Same relay trick so the iPad can use
+      // it — but opt-in, because this one can execute code. See
+      // AGENT_PROXY_ENABLED above.
+      ...(AGENT_PROXY_ENABLED
+        ? {
+            '/agent': {
+              target: process.env.CLAUDE_BRIDGE_TARGET || 'http://127.0.0.1:8790',
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/agent/, ''),
+            },
+          }
+        : {}),
     },
     // Vite rejects requests whose Host header it doesn't recognise. Tunnel
     // hostnames (trycloudflare.com, ngrok, tailscale) are random per session,
@@ -99,4 +161,5 @@ export default defineConfig(({ mode }) => ({
     // "importing binding name 'injectIntoGlobalHook' is not found".
     include: ['tldraw'],
   },
-}))
+  }
+})
